@@ -1,128 +1,146 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import math
 from PIL import Image
 
-def showimg_second(img1, img2, title1=None, title2=None):
-    plt.subplot(1, 2, 1)
-    plt.imshow(img1, cmap='gray')
-    plt.axis('off')
-    if title1 is not None:
-        plt.title(title1)
-    plt.subplot(1, 2, 2)
-    plt.imshow(img2, cmap='gray')
-    plt.axis('off')
-    if title2 is not None:
-        plt.title(title2)
-    plt.show()
 
-
-def showimg(img1, img2, img3, img4, img5, img6, img7, img8):
+def show8(img1, img2, img3, img4, img5, img6, img7, img8, title=''):
     plt.subplot(2, 4, 1)
     plt.imshow(img1, cmap='gray')
     plt.axis('off')
     plt.title('Original')
     plt.subplot(2, 4, 2)
-    plt.imshow(img2, cmap='gray')
-    plt.axis('off')
-    plt.title('Laplacian')
-    plt.subplot(2, 4, 3)
     plt.imshow(img3, cmap='gray')
     plt.axis('off')
-    plt.title('Original + Laplacian')
-    plt.subplot(2, 4, 4)
+    plt.title('Frequency filter low ' + title)
+    plt.subplot(2, 4, 3)
     plt.imshow(img4, cmap='gray')
     plt.axis('off')
-    plt.title('Sobel')
-    plt.subplot(2, 4, 5)
+    plt.title('Spectrum result low ' + title)
+    plt.subplot(2, 4, 4)
     plt.imshow(img5, cmap='gray')
     plt.axis('off')
-    plt.title('Smoothing, 5x5')
+    plt.title('Image Result low ' + title)
+    plt.subplot(2, 4, 5)
+    plt.imshow(img2, cmap='gray')
+    plt.axis('off')
+    plt.title('Image spectrum')
     plt.subplot(2, 4, 6)
     plt.imshow(img6, cmap='gray')
     plt.axis('off')
-    plt.title('Mask=(Original+Laplacian)*Smoothing')
+    plt.title('Frequency filter high ' + title)
     plt.subplot(2, 4, 7)
     plt.imshow(img7, cmap='gray')
     plt.axis('off')
-    plt.title('Original + Mask')
+    plt.title('Spectrum result high ' + title)
     plt.subplot(2, 4, 8)
     plt.imshow(img8, cmap='gray')
     plt.axis('off')
-    plt.title('Gamma correction')
+    plt.title('Image result high ' + title)
     plt.show()
 
 
 def open_image(filename):
     try:
-        image = cv2.imread(filename)
+        image = cv2.imread(filename, 0)
         return image
     except FileNotFoundError:
         print("Файл не найден")
         return
 
 
-# нормализация(линейоное растяжение)
-def normalization(image):
-    Imax = np.max(image)
-    Imin = np.min(image)
-    Omin, Omax = 0, 255
-    a = float(Omax - Omin) / (Imax - Imin)
-    b = Omin - a * Imin
-    image = a * image + b
-    image = image.astype(np.uint8)
-    return image
+def frequency(image, d_0, n):
+    p, q = image.shape[:2]
+    d = np.zeros((p, q, 1))
+    lowPerfect = np.zeros((p, q))
+    lowButterworth = np.zeros((p, q))
+    lowGaussian = np.zeros((p, q))
+    highPerfect = np.zeros((p, q))
+    highButterworth = np.zeros((p, q))
+    highGaussian = np.zeros((p, q))
+    for u in range(q):
+        for v in range(p):
+            d[u][v] = ((u - p / 2) ** 2 + (v - q / 2) ** 2) ** 0.5
+            lowPerfect[u][v] = (d[u][v] <= d_0)
+            lowButterworth[u][v] = 1 / ((1 + d[u][v] / d_0) ** (2 * n))
+            lowGaussian[u][v] = math.exp(-(d[u][v] * d[u][v]) / (2 * d_0 * d_0))
+
+            highPerfect[u][v] = (d[u][v] <= d_0)
+            highPerfect[u][v] = (d[u][v] > d_0)
+            if d[u][v] != 0:
+                highButterworth[u][v] = 1 / ((1 + d_0 / d[u][v]) ** (2 * n))
+            else:
+                highButterworth[u][v] = 0
+            highGaussian[u][v] = 1 - lowGaussian[u][v]
+    return lowPerfect, lowButterworth, lowGaussian, highPerfect, highButterworth, highGaussian
 
 
-def image_enhancement(image_original):
-    image_original = np.uint8(image_original)
+def spector(image):
+    image = np.array(image)
+    dft = cv2.dft(np.float32(image), flags=cv2.DFT_COMPLEX_OUTPUT)
+    dft_shift = np.fft.fftshift(dft)
+    dft_real = dft_shift[:, :, 0]
+    dft_complex = dft_shift[:, :, 1]
+    spector_image = np.log(cv2.magnitude(dft_real, dft_complex))
+    return dft_shift, spector_image
 
-    # Б: Применение оператора лапласиана к оригинальному изображению для обнаружения краев.
-    image_laplacian = cv2.Laplacian(image_original, cv2.CV_64F)
-    # Используем нормализацию, чтобы картинка не выходила за отрезок [0, 255]
-    image_laplacian = normalization(image_laplacian)
-    image_laplacian = np.uint8(image_laplacian)
 
-    # В: Повышение резкости = image_original + image_laplacian
-    image_addition = cv2.addWeighted(image_original, 1, image_laplacian, 1, 0)
-    image_addition = np.uint8(image_addition)
-    image_addition = normalization(image_addition)
+def perfect_filter(image, low_perfect, high_perfect):
+    dft_shift, spector_image = spector(image)
+    pow = 1
 
-    # Г: Применение градиентного оператора Собела к оригинальному изображению
-    image_sobelx = cv2.Sobel(image_original, cv2.CV_64F, 1, 0, 3)
-    image_sobely = cv2.Sobel(image_original, cv2.CV_64F, 0, 1, 3)
-    image_sobelx = cv2.convertScaleAbs(image_sobelx)
-    image_sobely = cv2.convertScaleAbs(image_sobely)
-    image_sobelxy = cv2.add(image_sobelx, image_sobely)
-    image_sobelxy = np.uint8(image_sobelxy)
+    fft_low = low_perfect * spector_image
+    spector_low = np.abs(fft_low) ** pow
+    result_low = np.abs(np.fft.ifft2(fft_low))
 
-    # Д: Сглаживание градиентного изображения image_sobelxy, сохранив края изображения, size = 5
-    image_medianBlur = cv2.medianBlur(image_sobelxy, 5)
-    image_medianBlur = np.uint8(image_medianBlur)
+    fft_high = high_perfect * spector_image
+    spector_high = np.abs(fft_high) ** pow
+    result_high = np.abs(np.fft.ifft2(fft_high))
 
-    # E: Изображение-маска = image_addition * image_medianBlur
-    image_mask = 255 * (image_addition / 255 * image_medianBlur / 255)
-    image_mask = np.uint8(image_mask)
+    show8(image, spector_image, low_perfect, spector_low, result_low,
+          high_perfect, spector_high, result_high, 'Perfect')
 
-    # Ж: Повышение резкости = image_original + image_mask
-    image_addition2 = cv2.add(image_original, image_mask)
-    image_addition2 = np.uint8(image_addition2)
 
-    # З: Градационная коррекция по степенному закону
-    gamma = 0.5
-    image_correction = 255 * (image_addition2 / 255) ** gamma
-    image_correction = np.uint8(image_correction)
+def butterworth(image, low_butterworth, high_butterworth):
+    dft_shift, spector_image = spector(image)
+    pow = 1
 
-    # Показ изображений
-    showimg_second(image_original, image_laplacian, 'Original', 'Laplacian')
-    showimg_second(image_addition, image_sobelxy, 'Original + Laplacian', 'Sobel')
-    showimg_second(image_medianBlur, image_mask, 'Smoothing, 5x5', 'Mask=(Original+Laplacian)*Smoothing')
-    showimg_second(image_addition2, image_correction, 'Original + Mask', 'Gamma correction')
-    showimg(image_original, image_laplacian, image_addition, image_sobelxy, image_medianBlur, image_mask,
-            image_addition2, image_correction)
+    fft_low = low_butterworth * spector_image
+    spector_low = np.abs(fft_low) ** pow
+    result_low = np.abs(np.fft.ifft2(fft_low))
+
+    fft_high = high_butterworth * spector_image
+    spector_high = np.abs(fft_high) ** pow
+    result_high = np.abs(np.fft.ifft2(fft_high))
+
+    show8(image, spector_image, low_butterworth, spector_low, result_low,
+          high_butterworth, spector_high, result_high, 'Butterworth')
+
+
+def gaussian(image, low_gaussian, high_gaussian):
+    dft_shift, spector_image = spector(image)
+    pow = 1
+
+    fft_low = low_gaussian * spector_image
+    spector_low = np.abs(fft_low) ** pow
+    result_low = np.abs(np.fft.ifft2(fft_low))
+
+    fft_high = high_gaussian * spector_image
+    spector_high = np.abs(fft_high) ** pow
+    result_high = np.abs(np.fft.ifft2(fft_high))
+
+    show8(image, spector_image, low_gaussian, spector_low, result_low,
+          high_gaussian, spector_high, result_high, 'Gaussian')
 
 
 if __name__ == '__main__':
-    filename = "skeleton.jpg"
+    filename = "aaa.png"
+    d_0 = 30
+    n = 1
     image_original = open_image(filename)
-    image_enhancement(image_original)
+    lowPerfect, lowButterworth, lowGaussian, highPerfect, highButterworth, highGaussian = \
+        frequency(image_original, d_0, n)
+    perfect_filter(image_original, lowPerfect, highPerfect)
+    butterworth(image_original, lowButterworth, highButterworth)
+    gaussian(image_original, lowGaussian, highGaussian)
