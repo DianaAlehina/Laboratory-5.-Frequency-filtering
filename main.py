@@ -21,7 +21,7 @@ def show8(img1, img2, img3, img4, img5, img6, img7, img8, title=''):
     plt.subplot(2, 4, 4)
     plt.imshow(img5, cmap='gray')
     plt.axis('off')
-    plt.title('Image Result low ' + title)
+    plt.title('Image result low ' + title)
     plt.subplot(2, 4, 5)
     plt.imshow(img2, cmap='gray')
     plt.axis('off')
@@ -52,7 +52,7 @@ def open_image(filename):
 
 def frequency(image, d_0, n):
     p, q = image.shape[:2]
-    d = np.zeros((p, q, 1))
+    d = np.zeros((p, q))
     lowPerfect = np.zeros((p, q))
     lowButterworth = np.zeros((p, q))
     lowGaussian = np.zeros((p, q))
@@ -76,68 +76,67 @@ def frequency(image, d_0, n):
     return lowPerfect, lowButterworth, lowGaussian, highPerfect, highButterworth, highGaussian
 
 
-def spector(image):
-    image = np.array(image)
-    dft = cv2.dft(np.float32(image), flags=cv2.DFT_COMPLEX_OUTPUT)
-    dft_shift = np.fft.fftshift(dft)
-    dft_real = dft_shift[:, :, 0]
-    dft_complex = dft_shift[:, :, 1]
-    spector_image = np.log(cv2.magnitude(dft_real, dft_complex))
-    return dft_shift, spector_image
-
-
 def perfect_filter(image, low_perfect, high_perfect):
-    dft_shift, spector_image = spector(image)
     pow = 1
+    spectrum = np.fft.fftshift(np.fft.fft2(image))
+    spectrum_log = np.log(np.abs(spectrum))
 
-    fft_low = low_perfect * spector_image
-    spector_low = np.abs(fft_low) ** pow
-    result_low = np.abs(np.fft.ifft2(fft_low))
+    fft_low = low_perfect * spectrum
+    spectrum_low = (low_perfect * spectrum_log) ** pow
+    result_low = np.fft.ifft2(np.fft.ifftshift(fft_low))
+    result_low = np.abs(result_low)
 
-    fft_high = high_perfect * spector_image
-    spector_high = np.abs(fft_high) ** pow
-    result_high = np.abs(np.fft.ifft2(fft_high))
+    fft_high = high_perfect * spectrum
+    spectrum_high = (high_perfect * spectrum_log) ** pow
+    result_high = np.fft.ifft2(np.fft.ifftshift(fft_high))
+    result_high = np.abs(result_high)
 
-    show8(image, spector_image, low_perfect, spector_low, result_low,
-          high_perfect, spector_high, result_high, 'Perfect')
+    show8(image, spectrum_log, low_perfect, spectrum_low, result_low,
+          high_perfect, spectrum_high, result_high, 'Perfect')
 
 
 def butterworth(image, low_butterworth, high_butterworth):
-    dft_shift, spector_image = spector(image)
-    pow = 1
+    pow = 0.4
+    spectrum = np.fft.fftshift(np.fft.fft2(image))
+    spectrum_log = np.log(np.abs(spectrum))
 
-    fft_low = low_butterworth * spector_image
-    spector_low = np.abs(fft_low) ** pow
-    result_low = np.abs(np.fft.ifft2(fft_low))
+    fft_low = low_butterworth * spectrum
+    spectrum_low = (low_butterworth * spectrum_log) ** pow
+    result_low = np.fft.ifft2(np.fft.ifftshift(fft_low))
+    result_low = np.abs(result_low)
 
-    fft_high = high_butterworth * spector_image
-    spector_high = np.abs(fft_high) ** pow
-    result_high = np.abs(np.fft.ifft2(fft_high))
+    fft_high = high_butterworth * spectrum
+    spectrum_high = (high_butterworth * spectrum_log) ** pow
+    result_high = np.fft.ifft2(np.fft.ifftshift(fft_high))
+    result_high = np.abs(result_high)
 
-    show8(image, spector_image, low_butterworth, spector_low, result_low,
-          high_butterworth, spector_high, result_high, 'Butterworth')
+    show8(image, spectrum_log, low_butterworth, spectrum_low, result_low,
+          high_butterworth, spectrum_high, result_high, 'Butterworth')
 
 
 def gaussian(image, low_gaussian, high_gaussian):
-    dft_shift, spector_image = spector(image)
-    pow = 1
+    pow = 0.5
+    spectrum = np.fft.fftshift(np.fft.fft2(image))
+    spectrum_log = np.log(np.abs(spectrum))
 
-    fft_low = low_gaussian * spector_image
-    spector_low = np.abs(fft_low) ** pow
-    result_low = np.abs(np.fft.ifft2(fft_low))
+    fft_low = low_gaussian * spectrum
+    spectrum_low = (low_gaussian * spectrum_log) ** pow
+    result_low = np.fft.ifft2(np.fft.ifftshift(fft_low))
+    result_low = np.abs(result_low)
 
-    fft_high = high_gaussian * spector_image
-    spector_high = np.abs(fft_high) ** pow
-    result_high = np.abs(np.fft.ifft2(fft_high))
+    fft_high = high_gaussian * spectrum
+    spectrum_high = (high_gaussian * spectrum_log) ** pow
+    result_high = np.fft.ifft2(np.fft.ifftshift(fft_high))
+    result_high = np.abs(result_high)
 
-    show8(image, spector_image, low_gaussian, spector_low, result_low,
-          high_gaussian, spector_high, result_high, 'Gaussian')
+    show8(image, spectrum_log, low_gaussian, spectrum_low, result_low,
+          high_gaussian, spectrum_high, result_high, 'Gaussian')
 
 
 if __name__ == '__main__':
     filename = "aaa.png"
     d_0 = 30
-    n = 1
+    n = 2
     image_original = open_image(filename)
     lowPerfect, lowButterworth, lowGaussian, highPerfect, highButterworth, highGaussian = \
         frequency(image_original, d_0, n)
